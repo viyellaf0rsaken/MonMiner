@@ -33,6 +33,7 @@ CORE_FILES=(
   "dashboard.py"
   "cmd.py"
   "minerlog.py"
+  "performance.py"
 )
 
 PEARLHASH_FILES=(
