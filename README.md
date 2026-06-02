@@ -6,8 +6,9 @@ MonMiner currently supports:
 
 * PearlHash
 * MinePRL
+* AlphaPool
 
-This is just a personal project and is not an official Pearl tool.
+This is a personal project and is not an official Pearl tool. Read the code before running it.
 
 ## Requirements
 
@@ -24,6 +25,7 @@ Extra requirements:
 
 * PearlHash: `pearl-miner`
 * MinePRL: Docker with NVIDIA GPU support
+* AlphaPool: `alpha-miner`
 
 ## Install
 
@@ -43,12 +45,15 @@ During setup, you can choose:
 ```text
 1) PearlHash
 2) MinePRL
-3) Other pools (unavailable for now)
+3) AlphaPool
+4) Other pools (unavailable for now)
 ```
 
 For PearlHash, setup can download `pearl-miner` automatically if it is missing.
 
-MinePRL uses Docker and will start the official MinePRL worker container.
+For AlphaPool, setup can download `alpha-miner` automatically if it is missing.
+
+MinePRL uses Docker and will start the MinePRL worker container.
 
 ## Start after installation
 
@@ -78,7 +83,11 @@ dashboard | live miner log
           | command console
 ```
 
-The dashboard reads runtime state from local files. Pool-specific backends write data into `runtime/current_data.json`.
+The dashboard reads runtime state from local files. Pool-specific backends write data into:
+
+```text
+runtime/current_data.json
+```
 
 ## Command console
 
@@ -116,7 +125,7 @@ to stop mining and close the dashboard.
 
 Performance Mode is optional.
 
-It can be toggled from the command console:
+It can be enabled during setup or toggled from the command console:
 
 ```text
 perf on
@@ -141,6 +150,7 @@ These files are generated locally and should not be uploaded:
 runtime/
 wallets.json
 pearl-miner
+alpha-miner
 *.log
 ```
 
@@ -148,7 +158,7 @@ Notes:
 
 * `runtime/` stores temporary dashboard state.
 * `wallets.json` stores saved wallet labels locally.
-* `pearl-miner` is not included in the repo.
+* `pearl-miner` and `alpha-miner` are not included in the repo.
 * MinePRL uses Docker.
 * Multi-GPU display is currently limited and may only show the first GPU.
 * This tool does not guarantee higher hashrate or higher earnings.
@@ -172,7 +182,7 @@ bash start.sh
 Check Python syntax:
 
 ```bash
-python3 -m py_compile dashboard.py cmd.py minerlog.py pearlhash_data.py mineprl_data.py performance.py
+python3 -m py_compile dashboard.py cmd.py minerlog.py pearlhash_data.py mineprl_data.py alphapool_data.py performance.py
 ```
 
 Check GPU stats manually:
