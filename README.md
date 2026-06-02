@@ -1,21 +1,24 @@
 # MonMiner
+
 A simple terminal dashboard for PRL mining pools.
 
 MonMiner currently supports:
 
-- PearlHash
-- MinePRL
+* PearlHash
+* MinePRL
 
 This is a personal project and is not an official Pearl tool. Read the code before running it.
 
 ## Requirements
 
-- WSL Ubuntu or native Linux
-- Python 3
-- `tmux`
-- NVIDIA GPU + driver
-- `nvidia-smi`
-- `git`
+Missing dependencies can be installed through `setup.sh`.
+
+* WSL Ubuntu or native Linux
+* Python 3
+* `tmux`
+* NVIDIA GPU + driver
+* `nvidia-smi`
+* `git`
 
 For MinePRL, Docker with GPU support is required.
 
@@ -37,7 +40,7 @@ During setup, you can choose:
 ```text
 1) PearlHash
 2) MinePRL
-3) Other pools (Unavailable for now)
+3) Other pools (unavailable for now)
 ```
 
 For PearlHash, setup can download `pearl-miner` automatically if it is missing.
@@ -93,12 +96,12 @@ to stop mining and close the dashboard.
 
 ## Notes
 
-- `runtime/` is local state and should not be uploaded.
-- `wallets.json` stores saved wallet labels locally.
-- `pearl-miner` is not included in the repo.
-- MinePRL uses Docker.
-- This tool does not guarantee higher hashrate or higher earnings.
-- This project is free. If you paid for it, you were scammed.
+* `runtime/` is local state and should not be uploaded.
+* `wallets.json` stores saved wallet labels locally.
+* `pearl-miner` is not included in the repo.
+* MinePRL uses Docker.
+* This tool does not guarantee higher hashrate or higher earnings.
+* This project is free. If you paid for it, you were scammed.
 
 ## Contact
 
