@@ -1,6 +1,6 @@
 # MonMiner
 
-A simple terminal dashboard for PRL mining pools.
+All-in-one terminal dashboard for Pearl/PRL mining pools with GPU stats, live logs, wallet links, and basic miner controls.
 
 MonMiner currently supports:
 
@@ -11,7 +11,7 @@ This is a personal project and is not an official Pearl tool. Read the code befo
 
 ## Requirements
 
-Missing dependencies can be installed through `setup.sh`.
+Missing dependencies can be installed or checked through `setup.sh`.
 
 * WSL Ubuntu or native Linux
 * Python 3
@@ -20,7 +20,10 @@ Missing dependencies can be installed through `setup.sh`.
 * `nvidia-smi`
 * `git`
 
-For MinePRL, Docker with GPU support is required.
+Extra requirements:
+
+* PearlHash: `pearl-miner`
+* MinePRL: Docker with NVIDIA GPU support
 
 ## Install
 
@@ -45,6 +48,8 @@ During setup, you can choose:
 
 For PearlHash, setup can download `pearl-miner` automatically if it is missing.
 
+MinePRL uses Docker and will start the official MinePRL worker container.
+
 ## Start after installation
 
 Every time you want to start MonMiner again:
@@ -63,6 +68,17 @@ cd MonMiner
 git pull
 bash start.sh
 ```
+
+## Dashboard layout
+
+MonMiner uses a `tmux` layout:
+
+```text
+dashboard | live miner log
+          | command console
+```
+
+The dashboard reads runtime state from local files. Pool-specific backends write data into `runtime/current_data.json`.
 
 ## Command console
 
@@ -83,6 +99,8 @@ show wallet
 hide wallet
 show all
 hide all
+perf on
+perf off
 clear
 ```
 
@@ -94,14 +112,80 @@ close
 
 to stop mining and close the dashboard.
 
-## Notes
-* Multi-GPU support is currently limited. The dashboard may only display the first GPU.
-* `runtime/` is local state and should not be uploaded.
+## Performance Mode
+
+Performance Mode is optional.
+
+It can be toggled from the command console:
+
+```text
+perf on
+perf off
+```
+
+Depending on your Windows/WSL setup, it may try to apply mining-focused settings such as power plan, display mode, or desktop background changes.
+
+Performance Mode should restore settings when you run:
+
+```text
+perf off
+```
+
+or close the dashboard normally.
+
+## Local files
+
+These files are generated locally and should not be uploaded:
+
+```text
+runtime/
+wallets.json
+pearl-miner
+*.log
+```
+
+Notes:
+
+* `runtime/` stores temporary dashboard state.
 * `wallets.json` stores saved wallet labels locally.
 * `pearl-miner` is not included in the repo.
 * MinePRL uses Docker.
+* Multi-GPU display is currently limited and may only show the first GPU.
 * This tool does not guarantee higher hashrate or higher earnings.
 * This project is free. If you paid for it, you were scammed.
+
+## Troubleshooting
+
+Stop a stuck tmux session:
+
+```bash
+tmux kill-server
+```
+
+Reset local runtime state:
+
+```bash
+rm -rf runtime
+bash start.sh
+```
+
+Check Python syntax:
+
+```bash
+python3 -m py_compile dashboard.py cmd.py minerlog.py pearlhash_data.py mineprl_data.py performance.py
+```
+
+Check GPU stats manually:
+
+```bash
+nvidia-smi
+```
+
+Check live miner log:
+
+```bash
+tail -f runtime/miner.log
+```
 
 ## Contact
 
