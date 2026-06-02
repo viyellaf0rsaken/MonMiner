@@ -331,7 +331,7 @@ def launch_tmux():
         subprocess.run(["tmux", "resize-pane", "-R", "-t", f"{session_name}:0.0", "18"], check=False)
         subprocess.run(["tmux", "resize-pane", "-D", "-t", f"{session_name}:0.2", "8"], check=False)
 
-        subprocess.run(["tmux", "attach-session", "-t", session_name], check=True)
+        subprocess.run(["tmux", "attach-session", "-t", session_name], check=False)
     except subprocess.CalledProcessError as e:
         print(f"[FATAL ERROR] Failed to launch tmux environment: {e}")
         sys.exit(1)
