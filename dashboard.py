@@ -260,7 +260,7 @@ def run_setup():
     os.system("clear")
 
     print("=" * 80)
-    print("MONITOR MINER DASHBOARD")
+    print(" MON-MINER DASHBOARD")
     print("=" * 80)
 
     profile = load_pool_profile()
@@ -435,7 +435,7 @@ def run_ui():
 
             clear()
 
-            print("PEARLHASH AUTOMATED ONE-CLICK MONITOR")
+            print("MON-MINER DASHBOARD")
             print("SYSTEM TIME:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             draw_line()
 
