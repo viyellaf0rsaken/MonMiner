@@ -7,7 +7,7 @@ MonMiner currently supports:
 * PearlHash
 * MinePRL
 
-This is a personal project and is not an official Pearl tool. Read the code before running it.
+This is just a personal project and is not an official Pearl tool.
 
 ## Requirements
 
