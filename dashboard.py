@@ -135,11 +135,13 @@ def choose_pool_host(profile):
     pool_name = profile.get("pool_name", "Pool")
     default_host = profile.get("default_pool_host", DEFAULT_POOL_HOST)
     options = profile.get("pool_options") or []
+    coming_soon = profile.get("coming_soon_options") or []
 
     print("\n[STEP 1] Pool host")
 
     if options:
         print(f"  {pool_name} provides multiple pool endpoints:")
+
         for idx, item in enumerate(options, start=1):
             name = item.get("name", f"Option {idx}")
             host = item.get("host", "")
@@ -147,19 +149,32 @@ def choose_pool_host(profile):
             extra = f" - {desc}" if desc else ""
             print(f"  ({idx}) {name:<10}: {host}{extra}")
 
-        print("  (C) Custom host")
-        choice = input(f"\nChoose pool option [1-{len(options)}] (Default: 1): ").strip().lower()
+        for idx, item in enumerate(coming_soon, start=len(options) + 1):
+            name = item.get("name", f"Option {idx}")
+            desc = item.get("description", "Coming soon")
+            print(f"  ({idx}) {name:<10}: {desc}")
 
-        if choice in ("c", "custom"):
-            custom = input(f"-> Custom pool host [{default_host}]: ").strip()
-            return custom or default_host
+        max_choice = len(options) + len(coming_soon)
 
-        if choice.isdigit():
-            idx = int(choice)
-            if 1 <= idx <= len(options):
-                return options[idx - 1].get("host") or default_host
+        while True:
+            choice = input(f"\nChoose pool option [1-{max_choice}] (Default: 1): ").strip().lower()
 
-        return options[0].get("host") or default_host
+            if choice == "":
+                return options[0].get("host") or default_host
+
+            if choice.isdigit():
+                idx = int(choice)
+
+                if 1 <= idx <= len(options):
+                    return options[idx - 1].get("host") or default_host
+
+                if len(options) < idx <= max_choice:
+                    selected = coming_soon[idx - len(options) - 1]
+                    name = selected.get("name", "This endpoint")
+                    print(f"  [INFO] {name} is coming soon. Please choose another endpoint.")
+                    continue
+
+            print("  [ERROR] Invalid selection. Please choose again.")
 
     print("  This pool has no region selection.")
     print("  Press Enter to use default, or paste a custom host.")
@@ -269,12 +284,18 @@ def run_setup():
     print("\n[STEP 3] Worker name")
     worker = input("-> Worker name [A]: ").strip() or "A"
 
+    print("\n[STEP 4] Performance Mode")
+    print("  Optional: apply mining-focused Windows/WSL settings before starting.")
+    perf_choice = input("-> Enable Performance Mode? (y/N): ").strip().lower()
+    performance_mode = perf_choice == "y"
+
+    # Keep config generic. Each backend decides its own miner executable.
     config = {
-        "pool_name": profile.get("pool_name", "PearlHash"),
+        "pool_name": profile.get("pool_name", "Pool"),
         "pool_host": pool_host,
         "wallet": wallet,
         "worker": worker,
-        "miner_exec": "./pearl-miner",
+        "performance_mode": performance_mode,
     }
 
     atomic_write_json(CONFIG_FILE, config)
@@ -285,9 +306,11 @@ def run_setup():
 
     print("\n" + "=" * 80)
     print("[INFO] Configuration ready:")
-    print(f"  Pool   : {pool_host}")
+    print(f"  Pool   : {profile.get('pool_name', 'Pool')}")
+    print(f"  Host   : {pool_host}")
     print(f"  Worker : {worker}")
     print(f"  Wallet : {short_wallet(wallet)}")
+    print(f"  Perf   : {'ON' if performance_mode else 'OFF'}")
     print("=" * 80)
     time.sleep(1)
 
@@ -430,6 +453,20 @@ def display_wallet(data):
         draw_line()
         return
 
+    if pool_name == "alphapool":
+        print("Mode           : AlphaPool miner page")
+
+        pool_url = wallet_info.get("pool_url")
+        if pool_url:
+            print("Pool Page      : type explorer in console")
+
+        last_updated = wallet_info.get("last_updated")
+        if last_updated:
+            print(f"Last Updated   : {last_updated}")
+
+        draw_line()
+        return
+
     print("Mode           : Explorer on-chain balance")
 
     confirmed = wallet_info.get("confirmed")
@@ -501,4 +538,5 @@ if __name__ == "__main__":
             sys.exit(1)
 
         launch_tmux()
+
 
