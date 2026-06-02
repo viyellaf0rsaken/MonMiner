@@ -86,7 +86,6 @@ def draw_line():
 
 
 def clear():
-    # Full clear avoids broken leftover text when MinePRL log/status lines change width.
     sys.stdout.write("\033[H\033[J")
     sys.stdout.flush()
 
@@ -332,9 +331,7 @@ def launch_tmux():
         subprocess.run(["tmux", "resize-pane", "-R", "-t", f"{session_name}:0.0", "18"], check=False)
         subprocess.run(["tmux", "resize-pane", "-D", "-t", f"{session_name}:0.2", "8"], check=False)
 
-        # attach-session returns non-zero when the tmux session is closed normally.
-        # Do not treat that as a fatal error.
-        subprocess.run(["tmux", "attach-session", "-t", session_name], check=False)
+        subprocess.run(["tmux", "attach-session", "-t", session_name], check=True)
     except subprocess.CalledProcessError as e:
         print(f"[FATAL ERROR] Failed to launch tmux environment: {e}")
         sys.exit(1)
@@ -380,10 +377,24 @@ def display_mining(data):
 def display_pool(data):
     print("MINING POOL CONNECTION")
     draw_line()
-    print(f"Pool           : {data.get('pool', 'PearlHash')}")
-    print(f"Host Address   : {data.get('pool_host', '--')}")
+
+    pool_name = str(data.get("pool", "Unknown"))
+    print(f"Pool           : {pool_name}")
+
+    if pool_name.lower() == "mineprl":
+        print("Backend        : Docker")
+        print(f"Container      : {data.get('container_name', 'mineprl')}")
+        print(f"Docker Image   : {data.get('docker_image', '--')}")
+    else:
+        print(f"Host Address   : {data.get('pool_host', '--')}")
+
     print(f"Worker         : {data.get('worker', '--')}")
     print(f"Miner Status   : {data.get('miner_status', 'UNKNOWN')}")
+
+    rejected = data.get("rejected_stale")
+    if rejected is not None:
+        print(f"Rejected/Stale : {rejected}")
+
     draw_line()
 
 
@@ -391,14 +402,36 @@ def display_wallet(data):
     print("PAYOUT / WALLET INFO")
     draw_line()
 
+    pool_name = str(data.get("pool", "")).lower()
     wallet = data.get("wallet", "")
     addr_display = wallet[:20] + "..." + wallet[-10:] if len(wallet) > 36 else wallet
 
     print(f"Address        : {addr_display}")
-    print("Explorer       : type explorer in console")
-    print("Mode           : Explorer on-chain balance")
+    print("Wallet Link    : type explorer in console")
 
     wallet_info = data.get("wallet_info", {})
+
+    if pool_name == "mineprl":
+        print("Mode           : MinePRL pool wallet page")
+
+        active_workers = wallet_info.get("active_workers")
+        accepted_pool = wallet_info.get("accepted_shares")
+
+        if active_workers is not None:
+            print(f"Active Workers : {active_workers}")
+
+        if accepted_pool is not None:
+            print(f"Pool Shares    : {accepted_pool}")
+
+        last_updated = wallet_info.get("last_updated")
+        if last_updated:
+            print(f"Last Updated   : {last_updated}")
+
+        draw_line()
+        return
+
+    print("Mode           : Explorer on-chain balance")
+
     confirmed = wallet_info.get("confirmed")
     unconfirmed = wallet_info.get("unconfirmed")
     transactions = wallet_info.get("transactions")
