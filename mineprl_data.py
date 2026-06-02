@@ -348,10 +348,13 @@ def iter_recent_log_lines(max_lines=300):
 
 
 def parse_hashrate():
-    metrics = parse_json_metrics()
+    text = "".join(iter_recent_log_lines())
 
-    # MinePRL reports dashboard-ready TH/s in these fields.
-    preferred_keys = [
+    if not text:
+        return None
+
+    # MinePRL JSON logs expose real TH/s in *_tera_hashes_per_second.
+    tera_keys = [
         "kernel_chain_tera_hashes_per_second",
         "chain_tera_hashes_per_second",
         "wall_chain_tera_hashes_per_second",
@@ -359,17 +362,24 @@ def parse_hashrate():
         "hashrate_ths",
     ]
 
-    for key in preferred_keys:
-        value = metrics.get(key)
-        if value is None:
+    for key in tera_keys:
+        pattern = rf'"{re.escape(key)}"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
+        matches = re.findall(pattern, text)
+
+        if not matches:
             continue
 
-        try:
-            v = float(value)
-            if v > 0:
-                return round(v, 2)
-        except Exception:
-            pass
+        values = []
+        for value in matches[-5:]:
+            try:
+                v = float(value)
+                if v > 0:
+                    values.append(v)
+            except Exception:
+                pass
+
+        if values:
+            return round(sum(values) / len(values), 2)
 
     # Fallback: raw hashes/s fields. Convert H/s -> TH/s.
     raw_hash_keys = [
@@ -380,27 +390,30 @@ def parse_hashrate():
     ]
 
     for key in raw_hash_keys:
-        value = metrics.get(key)
-        if value is None:
+        pattern = rf'"{re.escape(key)}"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
+        matches = re.findall(pattern, text)
+
+        if not matches:
             continue
 
-        try:
-            v = float(value)
-            if v > 0:
-                return round(v / 1_000_000_000_000, 2)
-        except Exception:
-            pass
+        values = []
+        for value in matches[-5:]:
+            try:
+                v = float(value)
+                if v > 0:
+                    values.append(v / 1_000_000_000_000)
+            except Exception:
+                pass
+
+        if values:
+            return round(sum(values) / len(values), 2)
 
     # Fallback for normal text logs.
-    text = "".join(iter_recent_log_lines())
-
-    if not text:
-        return None
-
     patterns = [
         r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Reported\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
+        r"Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
     ]
 
     values = []
@@ -412,10 +425,10 @@ def parse_hashrate():
             except Exception:
                 pass
 
-    if not values:
-        return None
+    if values:
+        return round(sum(values[-10:]) / len(values[-10:]), 2)
 
-    return round(sum(values[-10:]) / len(values[-10:]), 2)
+    return None
 
 
 def parse_json_metrics():
