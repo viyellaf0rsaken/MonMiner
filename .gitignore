@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MonMiner / PearlHash runtime files
+runtime/
+wallets.json
+miner.log
+*.log
+
+# Miner binary - user must download separately
+pearl-miner
+pearl-miner.exe
+
+# Local state / temp files
+.pearlhash_*
+*.tmp
