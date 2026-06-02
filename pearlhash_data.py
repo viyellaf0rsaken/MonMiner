@@ -10,6 +10,12 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
+try:
+    from performance import apply_performance_mode_noninteractive, restore_performance_mode
+except Exception:
+    apply_performance_mode_noninteractive = None
+    restore_performance_mode = None
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_DIR = os.path.join(SCRIPT_DIR, "runtime")
 
@@ -20,29 +26,9 @@ CMD_QUEUE_FILE = os.path.join(RUNTIME_DIR, "cmd_queue.txt")
 CMD_RESPONSE_FILE = os.path.join(RUNTIME_DIR, "cmd_response.txt")
 MINER_LOG_FILE = os.path.join(RUNTIME_DIR, "miner.log")
 SHUTDOWN_FILE = os.path.join(RUNTIME_DIR, "shutdown.flag")
-POOL_PROFILE_FILE = os.path.join(RUNTIME_DIR, "pool_profile.json")
 
 DEFAULT_POOL_HOST = "129.226.55.135:9000"
 DEFAULT_MINER_EXEC = "./pearl-miner"
-
-# Pool-specific setup profile.
-# Dashboard reads this file and decides whether to show region selection or not.
-POOL_PROFILE = {
-    "pool_name": "PearlHash",
-    "default_pool_host": DEFAULT_POOL_HOST,
-    "pool_options": [
-        {
-            "name": "Asia",
-            "host": "129.226.55.135:9000",
-            "description": "Asia region server",
-        },
-        {
-            "name": "US/EU",
-            "host": "84.32.220.219:9000",
-            "description": "US/EU region server",
-        },
-    ],
-}
 
 EXPLORER_BASE = "https://explorer.pearlresearch.ai/address"
 EXPLORER_NETWORK = "mainnet"
@@ -89,11 +75,6 @@ def append_response(message):
 
     with open(CMD_RESPONSE_FILE, "a", encoding="utf-8") as f:
         f.write(message + "\n")
-
-
-def write_pool_profile():
-    ensure_runtime()
-    atomic_write_json(POOL_PROFILE_FILE, POOL_PROFILE)
 
 
 def load_config():
@@ -488,9 +469,25 @@ def handle_commands(config, state):
             state["last_response"] = "Telemetry updated."
             continue
 
-        if cmd in ("perf on", "perf off", "performance on", "performance off"):
-            append_response("Performance Mode is not included in this split test yet.")
-            state["last_response"] = "Perf command ignored."
+        if cmd in ("perf on", "performance on"):
+            if apply_performance_mode_noninteractive:
+                ok, message = apply_performance_mode_noninteractive()
+                append_response(message)
+                append_response("Smart Cleanup is not included in console mode.")
+                state["last_response"] = "Performance Mode enabled." if ok else "Perf unavailable."
+            else:
+                append_response("Performance Mode module not available.")
+                state["last_response"] = "Perf unavailable."
+            continue
+
+        if cmd in ("perf off", "performance off"):
+            if restore_performance_mode:
+                ok, message = restore_performance_mode()
+                append_response(message)
+                state["last_response"] = "Performance Mode off." if ok else "Perf unavailable."
+            else:
+                append_response("Performance Mode module not available.")
+                state["last_response"] = "Perf unavailable."
             continue
 
         if cmd == "quit":
@@ -534,6 +531,8 @@ def build_data(config):
 
 
 def cleanup_and_exit():
+    if restore_performance_mode:
+        restore_performance_mode()
     stop_miner()
     ensure_runtime()
     with open(SHUTDOWN_FILE, "w", encoding="utf-8") as f:
@@ -572,8 +571,5 @@ def run():
 
 
 if __name__ == "__main__":
-    if "--write-profile" in sys.argv:
-        write_pool_profile()
-        sys.exit(0)
-
     run()
+
