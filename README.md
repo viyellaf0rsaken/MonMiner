@@ -8,7 +8,7 @@ MonMiner currently supports:
 * MinePRL
 * AlphaPool
 
-This is a personal project and is not an official Pearl tool. Read the code before running it.
+This is a personal project and is not an official Pearl tool.
 
 ## Requirements
 
