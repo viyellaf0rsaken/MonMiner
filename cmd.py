@@ -116,9 +116,27 @@ def draw(last_message="Ready."):
     print_console_help()
 
     msg = str(last_message)
+
     if msg.startswith("http://") or msg.startswith("https://"):
         print("[LINK]")
-        print(msg)
+
+        if "/wallet/" in msg:
+            wallet = msg.split("/wallet/", 1)[1]
+            print("Open:")
+            print("  https://mineprl.com/wallet/<wallet>")
+            print("Wallet:")
+            print(f"  {wallet}")
+
+        elif "/address/" in msg:
+            wallet = msg.split("/address/", 1)[1].split("?", 1)[0]
+            print("Open:")
+            print("  https://explorer.pearlresearch.ai/address/<wallet>?network=mainnet")
+            print("Wallet:")
+            print(f"  {wallet}")
+
+        else:
+            print(msg)
+
     else:
         print(f"[INFO] {fit_text(msg)}")
 
