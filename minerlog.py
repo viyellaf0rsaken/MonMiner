@@ -17,7 +17,7 @@ def run():
     os.system("clear")
 
     print("=" * 56)
-    print(" PEARLHASH LIVE MINER LOG")
+    print(" MON-MINER LOG")
     print("=" * 56)
     print("[INFO] Log pane only. Use the bottom-right console pane for commands.")
     print("")
