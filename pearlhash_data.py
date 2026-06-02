@@ -26,9 +26,27 @@ CMD_QUEUE_FILE = os.path.join(RUNTIME_DIR, "cmd_queue.txt")
 CMD_RESPONSE_FILE = os.path.join(RUNTIME_DIR, "cmd_response.txt")
 MINER_LOG_FILE = os.path.join(RUNTIME_DIR, "miner.log")
 SHUTDOWN_FILE = os.path.join(RUNTIME_DIR, "shutdown.flag")
+POOL_PROFILE_FILE = os.path.join(RUNTIME_DIR, "pool_profile.json")
 
 DEFAULT_POOL_HOST = "129.226.55.135:9000"
 DEFAULT_MINER_EXEC = "./pearl-miner"
+
+POOL_PROFILE = {
+    "pool_name": "PearlHash",
+    "default_pool_host": DEFAULT_POOL_HOST,
+    "pool_options": [
+        {
+            "name": "Asia",
+            "host": "129.226.55.135:9000",
+            "description": "Asia region server",
+        },
+        {
+            "name": "US/EU",
+            "host": "84.32.220.219:9000",
+            "description": "US/EU region server",
+        },
+    ],
+}
 
 EXPLORER_BASE = "https://explorer.pearlresearch.ai/address"
 EXPLORER_NETWORK = "mainnet"
@@ -57,6 +75,11 @@ def atomic_write_json(path, data):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     os.replace(tmp, path)
+
+
+def write_pool_profile():
+    ensure_runtime()
+    atomic_write_json(POOL_PROFILE_FILE, POOL_PROFILE)
 
 
 def read_json(path, default):
@@ -542,6 +565,10 @@ def cleanup_and_exit():
 def run():
     ensure_runtime()
     config = load_config()
+
+    if config.get("performance_mode") and apply_performance_mode_noninteractive:
+        apply_performance_mode_noninteractive()
+
     state = load_cmd_state()
     save_cmd_state(state)
 
@@ -571,5 +598,9 @@ def run():
 
 
 if __name__ == "__main__":
+    if "--write-profile" in sys.argv:
+        write_pool_profile()
+        sys.exit(0)
+
     run()
 
