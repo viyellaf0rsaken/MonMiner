@@ -259,7 +259,7 @@ def run_setup():
     os.system("clear")
 
     print("=" * 80)
-    print(" PEARLHASH MONITORED MINER - INITIAL SETUP")
+    print("MONITOR MINER DASHBOARD")
     print("=" * 80)
 
     profile = load_pool_profile()
