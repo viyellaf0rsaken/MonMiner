@@ -213,8 +213,8 @@ def start_miner(config):
         append_response("Docker is not installed or not accessible.")
         return False
 
-    wallet = config.get("wallet", "")
-    worker = config.get("worker", "A")
+    wallet = str(config.get("wallet", "")).strip()
+    worker = str(config.get("worker", "A")).strip() or "A"
     image = config.get("docker_image", DOCKER_IMAGE)
     container_name = config.get("container_name", CONTAINER_NAME)
 
@@ -222,21 +222,14 @@ def start_miner(config):
         append_response("No wallet address configured.")
         return False
 
-    status = container_status(container_name)
-
-    if status == "running":
-        start_log_follower(container_name)
-        return True
-
-    if status in ("created", "exited", "paused", "restarting", "dead"):
-        # Recreate container to make sure PRL_ADDRESS / RIG_LABEL changes are applied.
-        docker_run(["rm", "-f", container_name], timeout=15)
+    # Always recreate the container. Docker containers keep their original env,
+    # so reusing an old MinePRL container can keep mining to an old wallet.
+    stop_miner(config)
 
     cmd = [
         "run",
         "-d",
         "--gpus", "all",
-        "--restart", "unless-stopped",
         "--name", container_name,
         "-e", f"PRL_ADDRESS={wallet}",
         "-e", f"RIG_LABEL={worker}",
@@ -257,7 +250,6 @@ def start_miner(config):
     start_log_follower(container_name)
     return True
 
-
 def stop_miner(config=None):
     container_name = CONTAINER_NAME
     if isinstance(config, dict):
@@ -265,20 +257,15 @@ def stop_miner(config=None):
 
     stop_log_follower()
 
-    if has_docker() and container_exists(container_name):
-        docker_run(["stop", container_name], timeout=20)
-
-
-def restart_miner(config):
-    container_name = config.get("container_name", CONTAINER_NAME)
-    stop_log_follower()
-
+    # Remove instead of only stopping. This prevents old PRL_ADDRESS/RIG_LABEL
+    # from being reused by a stopped/exited container.
     if has_docker() and container_exists(container_name):
         docker_run(["rm", "-f", container_name], timeout=20)
 
+def restart_miner(config):
+    stop_miner(config)
     time.sleep(0.5)
     return start_miner(config)
-
 
 def wallet_url(wallet):
     if not wallet:
@@ -359,34 +346,31 @@ def parse_hashrate():
     if not text:
         return None
 
-    patterns = [
-        r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
-        r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
-        r"Reported\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
-        r"hashrate[_ ]?(?:ths|th_s|thps)?[\"']?\s*[:=]\s*([\d.]+)",
+    # Use the newest real MinePRL TH/s value. Do not average old boot values.
+    preferred_keys = [
+        "kernel_chain_tera_hashes_per_second",
+        "chain_tera_hashes_per_second",
+        "wall_chain_tera_hashes_per_second",
+        "reported_hashrate_thps",
+        "mean_hashrate_thps",
+        "peak_hashrate_thps",
     ]
 
-    values = []
+    for key in preferred_keys:
+        pattern = rf'"{re.escape(key)}"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
+        matches = re.findall(pattern, text, re.IGNORECASE)
 
-    for pattern in patterns[:3]:
-        for value, unit in re.findall(pattern, text, re.IGNORECASE):
-            try:
-                values.append(to_ths(float(value), unit))
-            except Exception:
-                pass
+        if not matches:
+            continue
 
-    # JSON-ish metrics fallback.
-    for match in re.findall(patterns[3], text, re.IGNORECASE):
         try:
-            values.append(float(match))
+            value = float(matches[-1])
+            if value > 1:
+                return round(value, 2)
         except Exception:
             pass
 
-    if not values:
-        return None
-
-    return round(sum(values[-10:]) / len(values[-10:]), 2)
-
+    return None
 
 def parse_json_metrics():
     metrics = {}
@@ -450,24 +434,18 @@ def parse_shares():
 
 
 def parse_rejects():
-    metrics = parse_json_metrics()
-    total = 0
+    text = "".join(iter_recent_log_lines())
 
-    for key in ("rejected_shares", "stale_shares", "rejects", "stales"):
-        try:
-            total += int(metrics.get(key, 0) or 0)
-        except Exception:
-            pass
-
-    if total:
-        return total
-
-    text = "".join(iter_recent_log_lines()).lower()
     if not text:
         return 0
 
-    return sum(1 for line in text.splitlines() if "reject" in line or "stale" in line)
+    rejected_matches = re.findall(r'"rejected_shares"\s*:\s*([0-9]+)', text, re.IGNORECASE)
+    stale_matches = re.findall(r'"stale_shares"\s*:\s*([0-9]+)', text, re.IGNORECASE)
 
+    rejected = int(rejected_matches[-1]) if rejected_matches else 0
+    stale = int(stale_matches[-1]) if stale_matches else 0
+
+    return rejected + stale
 
 def build_wallet_info(config):
     metrics = parse_json_metrics()
@@ -695,4 +673,5 @@ if __name__ == "__main__":
         sys.exit(0)
 
     run()
+
 
