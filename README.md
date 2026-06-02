@@ -95,7 +95,7 @@ close
 to stop mining and close the dashboard.
 
 ## Notes
-
+* Multi-GPU support is currently limited. The dashboard may only display the first GPU.
 * `runtime/` is local state and should not be uploaded.
 * `wallets.json` stores saved wallet labels locally.
 * `pearl-miner` is not included in the repo.
