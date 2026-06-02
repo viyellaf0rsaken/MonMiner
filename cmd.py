@@ -15,7 +15,7 @@ def ensure_runtime():
 def normalize_command(command):
     raw = (command or "").strip().lower()
     raw = re.sub(r"\s+", " ", raw)
- 
+
     if not raw:
         return ""
 
@@ -99,7 +99,7 @@ def fit_text(value, max_len=52):
 
 def print_console_help():
     print("=" * 56)
-    print(" PEARLHASH COMMAND CONSOLE")
+    print(" MON-MINER COMMAND CONSOLE")
     print("=" * 56)
     print("Miner     : pause | start | restart | status")
     print("Close     : close")
@@ -116,27 +116,22 @@ def draw(last_message="Ready."):
     print_console_help()
 
     msg = str(last_message)
-
     if msg.startswith("http://") or msg.startswith("https://"):
         print("[LINK]")
-
         if "/wallet/" in msg:
             wallet = msg.split("/wallet/", 1)[1]
             print("Open:")
             print("  https://mineprl.com/wallet/<wallet>")
             print("Wallet:")
             print(f"  {wallet}")
-
         elif "/address/" in msg:
             wallet = msg.split("/address/", 1)[1].split("?", 1)[0]
             print("Open:")
             print("  https://explorer.pearlresearch.ai/address/<wallet>?network=mainnet")
             print("Wallet:")
             print(f"  {wallet}")
-
         else:
             print(msg)
-
     else:
         print(f"[INFO] {fit_text(msg)}")
 
@@ -181,3 +176,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
