@@ -103,4 +103,5 @@ to stop mining and close the dashboard.
 ## Contact
 
 Discord: `haruka_0wo`
+
 Facebook: `https://www.facebook.com/viyella.f0rsaken`
