@@ -14,6 +14,7 @@ DATA_FILE = os.path.join(RUNTIME_DIR, "current_data.json")
 CMD_STATE_FILE = os.path.join(RUNTIME_DIR, "cmd_state.json")
 SHUTDOWN_FILE = os.path.join(RUNTIME_DIR, "shutdown.flag")
 POOL_PROFILE_FILE = os.path.join(RUNTIME_DIR, "pool_profile.json")
+POOL_BACKEND_FILE = os.path.join(RUNTIME_DIR, "pool_backend.json")
 WALLETS_FILE = os.path.join(SCRIPT_DIR, "wallets.json")
 
 DEFAULT_POOL_HOST = "129.226.55.135:9000"
@@ -49,6 +50,30 @@ def default_cmd_state():
     }
 
 
+def load_pool_backend():
+    default = {
+        "selected_pool": "pearlhash",
+        "data_file": "pearlhash_data.py",
+    }
+
+    backend = read_json(POOL_BACKEND_FILE, default)
+
+    if not isinstance(backend, dict):
+        return default
+
+    data_file = str(backend.get("data_file", "")).strip()
+    selected_pool = str(backend.get("selected_pool", "")).strip() or "pearlhash"
+
+    # Safety: only allow local *_data.py backend files.
+    if not data_file.endswith("_data.py") or "/" in data_file or "\\" in data_file:
+        data_file = default["data_file"]
+        selected_pool = default["selected_pool"]
+
+    backend["selected_pool"] = selected_pool
+    backend["data_file"] = data_file
+    return backend
+
+
 def fit_text(value, max_len=76):
     value = str(value)
     if len(value) <= max_len:
@@ -82,8 +107,11 @@ def show_cursor():
 
 def load_pool_profile():
     # Ask the selected pool data backend to write its profile first.
-    # If this fails, dashboard falls back to a simple custom-host setup.
-    backend = os.path.join(SCRIPT_DIR, "pearlhash_data.py")
+    # If setup.sh selected MinePRL, this must call mineprl_data.py, not pearlhash_data.py.
+    backend_info = load_pool_backend()
+    backend_file = backend_info.get("data_file", "pearlhash_data.py")
+    backend = os.path.join(SCRIPT_DIR, backend_file)
+
     try:
         subprocess.run(
             ["python3", backend, "--write-profile"],
@@ -95,7 +123,7 @@ def load_pool_profile():
         pass
 
     default = {
-        "pool_name": "PearlHash",
+        "pool_name": backend_info.get("selected_pool", "PearlHash"),
         "default_pool_host": DEFAULT_POOL_HOST,
         "pool_options": [],
     }
@@ -274,18 +302,20 @@ def launch_tmux():
 
     run_setup()
 
-    data_script = shlex.quote(os.path.join(SCRIPT_DIR, "pearlhash_data.py"))
+    backend_info = load_pool_backend()
+    data_file = backend_info.get("data_file", "pearlhash_data.py")
+
+    data_script = shlex.quote(os.path.join(SCRIPT_DIR, data_file))
     ui_script = shlex.quote(os.path.join(SCRIPT_DIR, "dashboard.py"))
     log_script = shlex.quote(os.path.join(SCRIPT_DIR, "minerlog.py"))
     console_script = shlex.quote(os.path.join(SCRIPT_DIR, "cmd.py"))
 
-    # Run the data backend in the background, then keep the visible pane as UI.
-    # This avoids creating a useless extra tmux pane for pearlhash_data.py.
+    # Run selected data backend in the background, then keep visible pane as UI.
     master_cmd = f"python3 {data_script} & python3 {ui_script} --ui"
     log_cmd = f"python3 {log_script}"
     console_cmd = f"python3 {console_script}"
 
-    session_name = f"pearlhash_{int(time.time())}"
+    session_name = f"monminer_{int(time.time())}"
 
     try:
         subprocess.run(["tmux", "new-session", "-d", "-s", session_name, master_cmd], check=True)
