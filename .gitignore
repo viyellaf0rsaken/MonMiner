@@ -230,3 +230,4 @@ pearl-miner.exe
 # Local state / temp files
 .pearlhash_*
 *.tmp
+ 
