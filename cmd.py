@@ -15,7 +15,7 @@ def ensure_runtime():
 def normalize_command(command):
     raw = (command or "").strip().lower()
     raw = re.sub(r"\s+", " ", raw)
-
+ 
     if not raw:
         return ""
 
