@@ -117,7 +117,7 @@ def draw(last_message="Ready."):
 
     msg = str(last_message)
     if msg.startswith("http://") or msg.startswith("https://"):
-        print("[INFO] Full link:")
+        print("[LINK]")
         print(msg)
     else:
         print(f"[INFO] {fit_text(msg)}")
