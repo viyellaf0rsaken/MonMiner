@@ -7,6 +7,12 @@ import signal
 import subprocess
 from datetime import datetime
 
+try:
+    from performance import apply_performance_mode_noninteractive, restore_performance_mode
+except Exception:
+    apply_performance_mode_noninteractive = None
+    restore_performance_mode = None
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_DIR = os.path.join(SCRIPT_DIR, "runtime")
 
@@ -353,82 +359,33 @@ def parse_hashrate():
     if not text:
         return None
 
-    # MinePRL JSON logs expose real TH/s in *_tera_hashes_per_second.
-    tera_keys = [
-        "kernel_chain_tera_hashes_per_second",
-        "chain_tera_hashes_per_second",
-        "wall_chain_tera_hashes_per_second",
-        "cumulative_chain_tera_hashes_per_second",
-        "hashrate_ths",
-    ]
-
-    for key in tera_keys:
-        pattern = rf'"{re.escape(key)}"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
-        matches = re.findall(pattern, text)
-
-        if not matches:
-            continue
-
-        values = []
-        for value in matches[-5:]:
-            try:
-                v = float(value)
-                if v > 0:
-                    values.append(v)
-            except Exception:
-                pass
-
-        if values:
-            return round(sum(values) / len(values), 2)
-
-    # Fallback: raw hashes/s fields. Convert H/s -> TH/s.
-    raw_hash_keys = [
-        "kernel_chain_hashes_per_second",
-        "chain_hashes_per_second",
-        "wall_chain_hashes_per_second",
-        "cumulative_chain_hashes_per_second",
-    ]
-
-    for key in raw_hash_keys:
-        pattern = rf'"{re.escape(key)}"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
-        matches = re.findall(pattern, text)
-
-        if not matches:
-            continue
-
-        values = []
-        for value in matches[-5:]:
-            try:
-                v = float(value)
-                if v > 0:
-                    values.append(v / 1_000_000_000_000)
-            except Exception:
-                pass
-
-        if values:
-            return round(sum(values) / len(values), 2)
-
-    # Fallback for normal text logs.
     patterns = [
         r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Reported\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
-        r"Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
+        r"hashrate[_ ]?(?:ths|th_s|thps)?[\"']?\s*[:=]\s*([\d.]+)",
     ]
 
     values = []
 
-    for pattern in patterns:
+    for pattern in patterns[:3]:
         for value, unit in re.findall(pattern, text, re.IGNORECASE):
             try:
                 values.append(to_ths(float(value), unit))
             except Exception:
                 pass
 
-    if values:
-        return round(sum(values[-10:]) / len(values[-10:]), 2)
+    # JSON-ish metrics fallback.
+    for match in re.findall(patterns[3], text, re.IGNORECASE):
+        try:
+            values.append(float(match))
+        except Exception:
+            pass
 
-    return None
+    if not values:
+        return None
+
+    return round(sum(values[-10:]) / len(values[-10:]), 2)
 
 
 def parse_json_metrics():
@@ -618,9 +575,25 @@ def handle_commands(config, state):
             state["last_response"] = "Telemetry updated."
             continue
 
-        if cmd in ("perf on", "perf off", "performance on", "performance off"):
-            append_response("Performance Mode is not included in this split test yet.")
-            state["last_response"] = "Perf command ignored."
+        if cmd in ("perf on", "performance on"):
+            if apply_performance_mode_noninteractive:
+                ok, message = apply_performance_mode_noninteractive()
+                append_response(message)
+                append_response("Smart Cleanup is not included in console mode.")
+                state["last_response"] = "Performance Mode enabled." if ok else "Perf unavailable."
+            else:
+                append_response("Performance Mode module not available.")
+                state["last_response"] = "Perf unavailable."
+            continue
+
+        if cmd in ("perf off", "performance off"):
+            if restore_performance_mode:
+                ok, message = restore_performance_mode()
+                append_response(message)
+                state["last_response"] = "Performance Mode off." if ok else "Perf unavailable."
+            else:
+                append_response("Performance Mode module not available.")
+                state["last_response"] = "Perf unavailable."
             continue
 
         if cmd == "quit":
@@ -670,6 +643,8 @@ def build_data(config):
 
 
 def cleanup_and_exit(config=None):
+    if restore_performance_mode:
+        restore_performance_mode()
     stop_miner(config)
     ensure_runtime()
     with open(SHUTDOWN_FILE, "w", encoding="utf-8") as f:
