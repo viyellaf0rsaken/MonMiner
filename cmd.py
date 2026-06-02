@@ -1,179 +1,504 @@
 import os
-import re
+import sys
+import json
 import time
+import shlex
+import subprocess
+from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RUNTIME_DIR = os.path.join(SCRIPT_DIR, "runtime")
-CMD_QUEUE_FILE = os.path.join(RUNTIME_DIR, "cmd_queue.txt")
-CMD_RESPONSE_FILE = os.path.join(RUNTIME_DIR, "cmd_response.txt")
+
+CONFIG_FILE = os.path.join(RUNTIME_DIR, "config.json")
+DATA_FILE = os.path.join(RUNTIME_DIR, "current_data.json")
+CMD_STATE_FILE = os.path.join(RUNTIME_DIR, "cmd_state.json")
+SHUTDOWN_FILE = os.path.join(RUNTIME_DIR, "shutdown.flag")
+POOL_PROFILE_FILE = os.path.join(RUNTIME_DIR, "pool_profile.json")
+POOL_BACKEND_FILE = os.path.join(RUNTIME_DIR, "pool_backend.json")
+WALLETS_FILE = os.path.join(SCRIPT_DIR, "wallets.json")
+
+DEFAULT_POOL_HOST = "129.226.55.135:9000"
 
 
 def ensure_runtime():
     os.makedirs(RUNTIME_DIR, exist_ok=True)
 
 
-def normalize_command(command):
-    raw = (command or "").strip().lower()
-    raw = re.sub(r"\s+", " ", raw)
-
-    if not raw:
-        return ""
-
-    known = [
-        "show mining", "hide mining", "toggle mining",
-        "show wallet", "hide wallet", "toggle wallet",
-        "show pool", "hide pool", "toggle pool",
-        "show gpu", "hide gpu", "toggle gpu",
-        "show all", "hide all", "toggle all",
-        "telemetry on", "telemetry off",
-        "perf on", "perf off",
-        "pause mine", "pause miner",
-        "stop mine", "stop miner",
-        "start mine", "start miner",
-        "resume mine",
-        "restart mine", "restart miner",
-        "wallet link",
-        "explorer",
-        "wallet",
-        "pause",
-        "start",
-        "resume",
-        "restart",
-        "status",
-        "state",
-        "close all",
-        "close",
-        "stop",
-        "exit",
-        "clear",
-    ]
-
-    if raw in known:
-        return raw
-
-    best_pos = None
-    best_cmd = None
-
-    for cmd in known:
-        pos = raw.find(cmd)
-        if pos >= 0 and (best_pos is None or pos < best_pos or (pos == best_pos and len(cmd) > len(best_cmd))):
-            best_pos = pos
-            best_cmd = cmd
-
-    return best_cmd or raw
-
-
-def append_command(command):
+def atomic_write_json(path, data):
     ensure_runtime()
-    command = normalize_command(command)
-    if not command:
-        return ""
-
-    with open(CMD_QUEUE_FILE, "a", encoding="utf-8") as f:
-        f.write(command + "\n")
-
-    return command
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
 
 
-def read_responses():
-    ensure_runtime()
-
-    if not os.path.exists(CMD_RESPONSE_FILE):
-        return []
-
+def read_json(path, default):
     try:
-        with open(CMD_RESPONSE_FILE, "r", encoding="utf-8", errors="ignore") as f:
-            lines = [line.strip() for line in f if line.strip()]
-        open(CMD_RESPONSE_FILE, "w").close()
-        return lines
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
     except Exception:
-        return []
+        return default
 
 
-def fit_text(value, max_len=52):
+def default_cmd_state():
+    return {
+        "show_gpu": True,
+        "show_mining": True,
+        "show_pool": True,
+        "show_wallet": True,
+        "last_response": "Ready.",
+    }
+
+
+def load_pool_backend():
+    default = {
+        "selected_pool": "pearlhash",
+        "data_file": "pearlhash_data.py",
+    }
+
+    backend = read_json(POOL_BACKEND_FILE, default)
+
+    if not isinstance(backend, dict):
+        return default
+
+    data_file = str(backend.get("data_file", "")).strip()
+    selected_pool = str(backend.get("selected_pool", "")).strip() or "pearlhash"
+
+    # Safety: only allow local *_data.py backend files.
+    if not data_file.endswith("_data.py") or "/" in data_file or "\\" in data_file:
+        data_file = default["data_file"]
+        selected_pool = default["selected_pool"]
+
+    backend["selected_pool"] = selected_pool
+    backend["data_file"] = data_file
+    return backend
+
+
+def fit_text(value, max_len=76):
     value = str(value)
     if len(value) <= max_len:
         return value
     return value[:max_len - 3] + "..."
 
 
-def print_console_help():
-    print("=" * 56)
-    print(" MON-MINER COMMAND CONSOLE")
-    print("=" * 56)
-    print("Miner     : pause | start | restart | status")
-    print("Close     : close")
-    print("Telemetry : show gpu | hide gpu | toggle gpu")
-    print("            show wallet | hide wallet | show all | hide all")
-    print("Wallet    : explorer")
-    print("Perf      : perf on | perf off")
-    print("Other     : clear")
-    print("=" * 56)
+def draw_line():
+    print("=" * 80)
 
 
-def draw(last_message="Ready."):
-    os.system("clear")
-    print_console_help()
-
-    msg = str(last_message)
-    if msg.startswith("http://") or msg.startswith("https://"):
-        print("[LINK]")
-        if "/wallet/" in msg:
-            wallet = msg.split("/wallet/", 1)[1]
-            print("Open:")
-            print("  https://mineprl.com/wallet/<wallet>")
-            print("Wallet:")
-            print(f"  {wallet}")
-        elif "/address/" in msg:
-            wallet = msg.split("/address/", 1)[1].split("?", 1)[0]
-            print("Open:")
-            print("  https://explorer.pearlresearch.ai/address/<wallet>?network=mainnet")
-            print("Wallet:")
-            print(f"  {wallet}")
-        else:
-            print(msg)
-    else:
-        print(f"[INFO] {fit_text(msg)}")
-
-    print("")
+def clear():
+    sys.stdout.write("\033[H\033[J")
+    sys.stdout.flush()
 
 
-def run():
-    ensure_runtime()
-    last_message = "Command console only. Logs are shown above."
-    draw(last_message)
+def clear_to_end():
+    sys.stdout.write("\033[J")
+    sys.stdout.flush()
+
+
+def hide_cursor():
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+
+
+def show_cursor():
+    sys.stdout.write("\033[?25h")
+    sys.stdout.flush()
+
+
+def load_pool_profile():
+    # Ask the selected pool data backend to write its profile first.
+    # If setup.sh selected MinePRL, this must call mineprl_data.py, not pearlhash_data.py.
+    backend_info = load_pool_backend()
+    backend_file = backend_info.get("data_file", "pearlhash_data.py")
+    backend = os.path.join(SCRIPT_DIR, backend_file)
+
+    try:
+        subprocess.run(
+            ["python3", backend, "--write-profile"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
+
+    default = {
+        "pool_name": backend_info.get("selected_pool", "PearlHash"),
+        "default_pool_host": DEFAULT_POOL_HOST,
+        "pool_options": [],
+    }
+
+    return read_json(POOL_PROFILE_FILE, default)
+
+
+def choose_pool_host(profile):
+    pool_name = profile.get("pool_name", "Pool")
+    default_host = profile.get("default_pool_host", DEFAULT_POOL_HOST)
+    options = profile.get("pool_options") or []
+
+    print("\n[STEP 1] Pool host")
+
+    if options:
+        print(f"  {pool_name} provides multiple pool endpoints:")
+        for idx, item in enumerate(options, start=1):
+            name = item.get("name", f"Option {idx}")
+            host = item.get("host", "")
+            desc = item.get("description", "")
+            extra = f" - {desc}" if desc else ""
+            print(f"  ({idx}) {name:<10}: {host}{extra}")
+
+        print("  (C) Custom host")
+        choice = input(f"\nChoose pool option [1-{len(options)}] (Default: 1): ").strip().lower()
+
+        if choice in ("c", "custom"):
+            custom = input(f"-> Custom pool host [{default_host}]: ").strip()
+            return custom or default_host
+
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(options):
+                return options[idx - 1].get("host") or default_host
+
+        return options[0].get("host") or default_host
+
+    print("  This pool has no region selection.")
+    print("  Press Enter to use default, or paste a custom host.")
+    return input(f"-> Pool host [{default_host}]: ").strip() or default_host
+
+
+def load_wallets():
+    data = read_json(WALLETS_FILE, [])
+
+    # Backward compatibility if someone manually writes {"wallets": [...]}
+    if isinstance(data, dict):
+        data = data.get("wallets", [])
+
+    if not isinstance(data, list):
+        return []
+
+    cleaned = []
+    seen = set()
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        address = str(item.get("address", "")).strip()
+        name = str(item.get("name", "")).strip() or "Unnamed"
+
+        if not address or address in seen:
+            continue
+
+        cleaned.append({"name": name, "address": address})
+        seen.add(address)
+
+    return cleaned
+
+
+def save_wallets(wallets):
+    atomic_write_json(WALLETS_FILE, wallets)
+
+
+def short_wallet(address):
+    if len(address) > 36:
+        return address[:20] + "..." + address[-10:]
+    return address
+
+
+def choose_wallet():
+    wallets = load_wallets()
+
+    print("\n[STEP 2] Wallet address")
+
+    if wallets:
+        print("  Saved wallets:")
+        for idx, item in enumerate(wallets, start=1):
+            print(f"  ({idx}) {item['name']:<18}: {short_wallet(item['address'])}")
+
+        print("  (N) New wallet")
+        choice = input("\nChoose wallet number or N for new wallet: ").strip().lower()
+
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(wallets):
+                return wallets[idx - 1]["address"]
+
+        if choice not in ("n", "new", ""):
+            print("  Invalid selection. Creating a new wallet entry.")
 
     while True:
-        try:
-            command = input("cmd> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            return
+        wallet = input("-> Paste Pearl wallet address: ").strip()
+        if wallet:
+            break
+        print("   [ERROR] Wallet address cannot be empty.")
 
-        normalized = normalize_command(command)
+    save_choice = input("-> Save this wallet for later? (y/N): ").strip().lower()
+    if save_choice == "y":
+        default_name = f"Wallet {len(wallets) + 1}"
+        name = input(f"-> Wallet name [{default_name}]: ").strip() or default_name
 
-        if not normalized:
-            draw(last_message)
-            continue
+        # Update existing entry if address already exists.
+        updated = False
+        for item in wallets:
+            if item["address"] == wallet:
+                item["name"] = name
+                updated = True
+                break
 
-        if normalized in ("clear", "cls"):
-            last_message = "Console cleared."
-            draw(last_message)
-            continue
+        if not updated:
+            wallets.append({"name": name, "address": wallet})
 
-        sent = append_command(normalized)
+        save_wallets(wallets)
+        print("  [OK] Wallet saved.")
 
-        time.sleep(0.35)
-        responses = read_responses()
+    return wallet
 
-        if responses:
-            last_message = " | ".join(responses[-3:])
-        else:
-            last_message = f"sent: {sent}"
 
-        draw(last_message)
+def run_setup():
+    ensure_runtime()
+    os.system("clear")
+
+    print("=" * 80)
+    print(" MON-MINER DASHBOARD")
+    print("=" * 80)
+
+    profile = load_pool_profile()
+    pool_host = choose_pool_host(profile)
+    wallet = choose_wallet()
+
+    print("\n[STEP 3] Worker name")
+    worker = input("-> Worker name [A]: ").strip() or "A"
+
+    config = {
+        "pool_name": profile.get("pool_name", "PearlHash"),
+        "pool_host": pool_host,
+        "wallet": wallet,
+        "worker": worker,
+        "miner_exec": "./pearl-miner",
+    }
+
+    atomic_write_json(CONFIG_FILE, config)
+    atomic_write_json(CMD_STATE_FILE, default_cmd_state())
+
+    if os.path.exists(SHUTDOWN_FILE):
+        os.remove(SHUTDOWN_FILE)
+
+    print("\n" + "=" * 80)
+    print("[INFO] Configuration ready:")
+    print(f"  Pool   : {pool_host}")
+    print(f"  Worker : {worker}")
+    print(f"  Wallet : {short_wallet(wallet)}")
+    print("=" * 80)
+    time.sleep(1)
+
+
+def is_inside_tmux():
+    return bool(os.environ.get("TMUX"))
+
+
+def launch_tmux():
+    if is_inside_tmux():
+        return
+
+    run_setup()
+
+    backend_info = load_pool_backend()
+    data_file = backend_info.get("data_file", "pearlhash_data.py")
+
+    data_script = shlex.quote(os.path.join(SCRIPT_DIR, data_file))
+    ui_script = shlex.quote(os.path.join(SCRIPT_DIR, "dashboard.py"))
+    log_script = shlex.quote(os.path.join(SCRIPT_DIR, "minerlog.py"))
+    console_script = shlex.quote(os.path.join(SCRIPT_DIR, "cmd.py"))
+
+    # Run selected data backend in the background, then keep visible pane as UI.
+    master_cmd = f"python3 {data_script} & python3 {ui_script} --ui"
+    log_cmd = f"python3 {log_script}"
+    console_cmd = f"python3 {console_script}"
+
+    session_name = f"monminer_{int(time.time())}"
+
+    try:
+        subprocess.run(["tmux", "new-session", "-d", "-s", session_name, master_cmd], check=True)
+        subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"], check=False)
+
+        # Right side: live miner log.
+        subprocess.run(["tmux", "split-window", "-h", "-t", session_name, log_cmd], check=True)
+
+        # Bottom-right: command console.
+        subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.1", console_cmd], check=True)
+
+        # Give dashboard more width and keep command console compact.
+        subprocess.run(["tmux", "resize-pane", "-R", "-t", f"{session_name}:0.0", "18"], check=False)
+        subprocess.run(["tmux", "resize-pane", "-D", "-t", f"{session_name}:0.2", "8"], check=False)
+
+        subprocess.run(["tmux", "attach-session", "-t", session_name], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[FATAL ERROR] Failed to launch tmux environment: {e}")
+        sys.exit(1)
+
+    sys.exit(0)
+
+
+def format_session(seconds):
+    seconds = int(seconds or 0)
+    return f"{seconds//3600:02d}h {(seconds%3600)//60:02d}m {seconds%60:02d}s"
+
+
+def display_gpu(data):
+    gpu = data.get("gpu", {})
+    print("GPU DEVICE STATUS")
+    draw_line()
+    print(f"Model          : {gpu.get('name', 'N/A')}")
+    print(f"GPU Load       : {gpu.get('load', 0):>6}%")
+    print(f"Temperature    : {gpu.get('temp', 0):>6} °C")
+    print(f"Power Draw     : {gpu.get('power', 0):>6} W")
+    print(f"VRAM Usage     : {gpu.get('mem_used', '0')} / {gpu.get('mem_total', '0')} MB")
+    print(f"Fan Speed      : {gpu.get('fan', '0'):>6}%")
+
+    eff = data.get("efficiency_thw")
+    print(f"Efficiency     : {eff:>6} TH/W" if eff is not None else "Efficiency     :     -- TH/W")
+    draw_line()
+
+
+def display_mining(data):
+    print("MINING PERFORMANCE")
+    draw_line()
+
+    hashrate = data.get("hashrate_ths")
+    print(f"Current Hashrate : {hashrate} TH/s" if hashrate is not None else "Current Hashrate : -- TH/s")
+
+    if data.get("shares_detected"):
+        print(f"Accepted Shares  : {data.get('accepted_shares', 0):>6} shares")
+
+    print(f"Session Duration : {format_session(data.get('session_seconds', 0))}")
+    draw_line()
+
+
+def display_pool(data):
+    print("MINING POOL CONNECTION")
+    draw_line()
+
+    pool_name = str(data.get("pool", "Unknown"))
+    print(f"Pool           : {pool_name}")
+
+    if pool_name.lower() == "mineprl":
+        print("Backend        : Docker")
+        print(f"Container      : {data.get('container_name', 'mineprl')}")
+        print(f"Docker Image   : {data.get('docker_image', '--')}")
+    else:
+        print(f"Host Address   : {data.get('pool_host', '--')}")
+
+    print(f"Worker         : {data.get('worker', '--')}")
+    print(f"Miner Status   : {data.get('miner_status', 'UNKNOWN')}")
+
+    rejected = data.get("rejected_stale")
+    if rejected is not None:
+        print(f"Rejected/Stale : {rejected}")
+
+    draw_line()
+
+
+def display_wallet(data):
+    print("PAYOUT / WALLET INFO")
+    draw_line()
+
+    pool_name = str(data.get("pool", "")).lower()
+    wallet = data.get("wallet", "")
+    addr_display = wallet[:20] + "..." + wallet[-10:] if len(wallet) > 36 else wallet
+
+    print(f"Address        : {addr_display}")
+    print("Wallet Link    : type explorer in console")
+
+    wallet_info = data.get("wallet_info", {})
+
+    if pool_name == "mineprl":
+        print("Mode           : MinePRL pool wallet page")
+
+        active_workers = wallet_info.get("active_workers")
+        accepted_pool = wallet_info.get("accepted_shares")
+
+        if active_workers is not None:
+            print(f"Active Workers : {active_workers}")
+
+        if accepted_pool is not None:
+            print(f"Pool Shares    : {accepted_pool}")
+
+        last_updated = wallet_info.get("last_updated")
+        if last_updated:
+            print(f"Last Updated   : {last_updated}")
+
+        draw_line()
+        return
+
+    print("Mode           : Explorer on-chain balance")
+
+    confirmed = wallet_info.get("confirmed")
+    unconfirmed = wallet_info.get("unconfirmed")
+    transactions = wallet_info.get("transactions")
+    last_updated = wallet_info.get("last_updated")
+    error = wallet_info.get("error")
+
+    print(f"Confirmed      : {confirmed:>20.8f} PRL" if confirmed is not None else "Confirmed      : --")
+
+    if unconfirmed is not None:
+        print(f"Unconfirmed    : {unconfirmed:>20.8f} PRL")
+
+    if transactions is not None:
+        print(f"Transactions   : {transactions}")
+
+    if last_updated:
+        print(f"Last Updated   : {last_updated}")
+
+    if error:
+        print(f"[WARN] Explorer: {fit_text(error, 60)}")
+
+    draw_line()
+
+
+def run_ui():
+    hide_cursor()
+
+    try:
+        while True:
+            if os.path.exists(SHUTDOWN_FILE):
+                show_cursor()
+                subprocess.Popen(["tmux", "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+
+            data = read_json(DATA_FILE, {})
+            state = read_json(CMD_STATE_FILE, default_cmd_state())
+
+            clear()
+
+            print("MON-MINER DASHBOARD")
+            print("SYSTEM TIME:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            draw_line()
+
+            if state.get("show_gpu", True):
+                display_gpu(data)
+            if state.get("show_mining", True):
+                display_mining(data)
+            if state.get("show_pool", True):
+                display_pool(data)
+            if state.get("show_wallet", True):
+                display_wallet(data)
+
+            clear_to_end()
+            time.sleep(1)
+
+    finally:
+        show_cursor()
 
 
 if __name__ == "__main__":
-    run()
+    if "--ui" in sys.argv:
+        run_ui()
+    else:
+        try:
+            subprocess.run(["tmux", "-V"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        except Exception:
+            print("[ERROR] tmux is required. Run: sudo apt install tmux")
+            sys.exit(1)
+
+        launch_tmux()
 
