@@ -274,24 +274,32 @@ def launch_tmux():
 
     run_setup()
 
-    data_cmd = f"python3 {shlex.quote(os.path.join(SCRIPT_DIR, 'pearlhash_data.py'))}"
-    ui_cmd = f"python3 {shlex.quote(os.path.join(SCRIPT_DIR, 'dashboard.py'))} --ui"
-    log_cmd = f"python3 {shlex.quote(os.path.join(SCRIPT_DIR, 'minerlog.py'))}"
-    console_cmd = f"python3 {shlex.quote(os.path.join(SCRIPT_DIR, 'cmd.py'))}"
+    data_script = shlex.quote(os.path.join(SCRIPT_DIR, "pearlhash_data.py"))
+    ui_script = shlex.quote(os.path.join(SCRIPT_DIR, "dashboard.py"))
+    log_script = shlex.quote(os.path.join(SCRIPT_DIR, "minerlog.py"))
+    console_script = shlex.quote(os.path.join(SCRIPT_DIR, "cmd.py"))
+
+    # Run the data backend in the background, then keep the visible pane as UI.
+    # This avoids creating a useless extra tmux pane for pearlhash_data.py.
+    master_cmd = f"python3 {data_script} & python3 {ui_script} --ui"
+    log_cmd = f"python3 {log_script}"
+    console_cmd = f"python3 {console_script}"
 
     session_name = f"pearlhash_{int(time.time())}"
 
     try:
-        subprocess.run(["tmux", "new-session", "-d", "-s", session_name, data_cmd], check=True)
-        subprocess.run(["tmux", "split-window", "-h", "-t", session_name, ui_cmd], check=True)
-        subprocess.run(["tmux", "select-pane", "-t", f"{session_name}:0.1"], check=True)
-        subprocess.run(["tmux", "split-window", "-h", "-t", f"{session_name}:0.1", log_cmd], check=True)
-        subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.2", console_cmd], check=True)
-
-        # Kill hidden data pane, keep process running? No. Instead keep data pane as tiny left hidden-ish pane.
-        # Layout: data pane / dashboard / log+console. Make data pane very small.
-        subprocess.run(["tmux", "resize-pane", "-L", "-t", f"{session_name}:0.0", "45"], check=False)
+        subprocess.run(["tmux", "new-session", "-d", "-s", session_name, master_cmd], check=True)
         subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"], check=False)
+
+        # Right side: live miner log.
+        subprocess.run(["tmux", "split-window", "-h", "-t", session_name, log_cmd], check=True)
+
+        # Bottom-right: command console.
+        subprocess.run(["tmux", "split-window", "-v", "-t", f"{session_name}:0.1", console_cmd], check=True)
+
+        # Give dashboard more width and keep command console compact.
+        subprocess.run(["tmux", "resize-pane", "-R", "-t", f"{session_name}:0.0", "18"], check=False)
+        subprocess.run(["tmux", "resize-pane", "-D", "-t", f"{session_name}:0.2", "8"], check=False)
 
         subprocess.run(["tmux", "attach-session", "-t", session_name], check=True)
     except subprocess.CalledProcessError as e:
@@ -427,3 +435,4 @@ if __name__ == "__main__":
             sys.exit(1)
 
         launch_tmux()
+
