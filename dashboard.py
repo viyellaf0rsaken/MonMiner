@@ -86,7 +86,8 @@ def draw_line():
 
 
 def clear():
-    sys.stdout.write("\033[H")
+    # Full clear avoids broken leftover text when MinePRL log/status lines change width.
+    sys.stdout.write("\033[H\033[J")
     sys.stdout.flush()
 
 
