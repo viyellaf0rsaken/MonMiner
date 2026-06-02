@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# PEARLHASH MONITORED MINER - SETUP / UPDATE CHECK
+# MONMINER - SETUP / UPDATE CHECK
 # ==============================================================================
-# This script only prepares the project folder:
+# This script prepares the project folder:
 #   - checks dependencies
+#   - prepares runtime folder
+#   - selects pool backend
 #   - downloads missing project files if UPDATE_BASE_URL is set
-#   - checks pearl-miner presence
-#   - makes scripts executable
+#   - downloads pearl-miner for PearlHash if user agrees
+#   - checks Python syntax
 #
 # It does NOT start the dashboard. Use start.sh for that.
 # ==============================================================================
@@ -15,28 +17,30 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="$SCRIPT_DIR/runtime"
 
 # Fill this later when the GitHub repo is ready, for example:
 # UPDATE_BASE_URL="https://raw.githubusercontent.com/YOUR_NAME/YOUR_REPO/main"
 #
 # Or run with:
-# PEARLHASH_UPDATE_URL="https://raw.githubusercontent.com/YOUR_NAME/YOUR_REPO/main" bash setup.sh
-UPDATE_BASE_URL="${PEARLHASH_UPDATE_URL:-}"
+# MONMINER_UPDATE_URL="https://raw.githubusercontent.com/YOUR_NAME/YOUR_REPO/main" bash setup.sh
+UPDATE_BASE_URL="${MONMINER_UPDATE_URL:-${PEARLHASH_UPDATE_URL:-}}"
 
-REQUIRED_FILES=(
+PEARLHASH_MINER_URL="https://pearlhash.xyz/downloads/pearl-miner-v11"
+
+CORE_FILES=(
   "dashboard.py"
-  "pearlhash_data.py"
   "cmd.py"
   "minerlog.py"
 )
 
-OPTIONAL_FILES=(
-  "README.md"
+PEARLHASH_FILES=(
+  "pearlhash_data.py"
 )
 
 print_header() {
     echo "============================================================"
-    echo " PEARLHASH MONITORED MINER - SETUP"
+    echo " MONMINER - SETUP"
     echo "============================================================"
 }
 
@@ -45,16 +49,8 @@ has_cmd() {
 }
 
 download_file() {
-    local file_name="$1"
-
-    if [ -z "$UPDATE_BASE_URL" ]; then
-        return 1
-    fi
-
-    local url="${UPDATE_BASE_URL%/}/${file_name}"
-    local target="$SCRIPT_DIR/$file_name"
-
-    echo "[INFO] Downloading $file_name"
+    local url="$1"
+    local target="$2"
 
     if has_cmd curl; then
         curl -fsSL "$url" -o "$target"
@@ -68,6 +64,20 @@ download_file() {
 
     echo "[ERROR] curl or wget is required to download files."
     return 1
+}
+
+download_repo_file() {
+    local file_name="$1"
+
+    if [ -z "$UPDATE_BASE_URL" ]; then
+        return 1
+    fi
+
+    local url="${UPDATE_BASE_URL%/}/${file_name}"
+    local target="$SCRIPT_DIR/$file_name"
+
+    echo "[INFO] Downloading $file_name"
+    download_file "$url" "$target"
 }
 
 check_python() {
@@ -103,19 +113,6 @@ check_tmux() {
     return 1
 }
 
-check_downloader() {
-    if has_cmd curl || has_cmd wget; then
-        return 0
-    fi
-
-    if [ -n "$UPDATE_BASE_URL" ]; then
-        echo "[ERROR] curl or wget is required because UPDATE_BASE_URL is set."
-        return 1
-    fi
-
-    return 0
-}
-
 check_nvidia_smi() {
     if has_cmd nvidia-smi; then
         echo "[OK] nvidia-smi found in PATH"
@@ -132,44 +129,128 @@ check_nvidia_smi() {
 }
 
 prepare_runtime() {
-    mkdir -p "$SCRIPT_DIR/runtime"
+    mkdir -p "$RUNTIME_DIR"
 }
 
-prepare_project_files() {
-    local missing=0
+write_pool_backend() {
+    local selected_pool="$1"
+    local data_file="$2"
 
-    for file_name in "${REQUIRED_FILES[@]}"; do
+    mkdir -p "$RUNTIME_DIR"
+
+    cat > "$RUNTIME_DIR/pool_backend.json" <<EOF
+{
+  "selected_pool": "$selected_pool",
+  "data_file": "$data_file"
+}
+EOF
+
+    echo "[OK] Selected backend: $selected_pool ($data_file)"
+}
+
+select_pool_backend() {
+    echo ""
+    echo "============================================================"
+    echo " Select pool backend"
+    echo "============================================================"
+    echo "  1) PearlHash"
+    echo "  2) MinePRL       (coming soon)"
+    echo "  3) Custom/Future (coming soon)"
+    echo ""
+
+    read -rp "Choose [1-3] (Default: 1): " choice
+
+    case "$choice" in
+        2)
+            echo "[WARN] MinePRL backend is not available yet."
+            echo "[INFO] Falling back to PearlHash for now."
+            write_pool_backend "pearlhash" "pearlhash_data.py"
+            ;;
+        3)
+            echo "[WARN] Custom/Future backend is not available yet."
+            echo "[INFO] Falling back to PearlHash for now."
+            write_pool_backend "pearlhash" "pearlhash_data.py"
+            ;;
+        *)
+            write_pool_backend "pearlhash" "pearlhash_data.py"
+            ;;
+    esac
+}
+
+prepare_core_files() {
+    local failed=0
+
+    for file_name in "${CORE_FILES[@]}"; do
         if [ ! -f "$SCRIPT_DIR/$file_name" ]; then
             echo "[WARN] Missing $file_name"
 
-            if download_file "$file_name"; then
+            if download_repo_file "$file_name"; then
                 echo "[OK] Downloaded $file_name"
             else
                 echo "[ERROR] Could not prepare $file_name"
-                missing=1
+                failed=1
             fi
         else
             echo "[OK] $file_name found"
         fi
     done
 
-    for file_name in "${OPTIONAL_FILES[@]}"; do
-        if [ ! -f "$SCRIPT_DIR/$file_name" ] && [ -n "$UPDATE_BASE_URL" ]; then
-            download_file "$file_name" >/dev/null 2>&1 || true
+    return "$failed"
+}
+
+prepare_pearlhash_files() {
+    local failed=0
+
+    for file_name in "${PEARLHASH_FILES[@]}"; do
+        if [ ! -f "$SCRIPT_DIR/$file_name" ]; then
+            echo "[WARN] Missing $file_name"
+
+            if download_repo_file "$file_name"; then
+                echo "[OK] Downloaded $file_name"
+            else
+                echo "[ERROR] Could not prepare $file_name"
+                failed=1
+            fi
+        else
+            echo "[OK] $file_name found"
         fi
     done
 
-    return "$missing"
+    return "$failed"
 }
 
-check_miner_binary() {
+download_pearlhash_miner() {
+    local miner="$SCRIPT_DIR/pearl-miner"
+
+    echo ""
+    echo "PearlHash miner binary is required but not found."
+    echo "Download command:"
+    echo "  curl $PEARLHASH_MINER_URL -o pearl-miner && chmod +x pearl-miner"
+    echo ""
+
+    read -rp "Download pearl-miner now? (y/N): " ans
+
+    if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+        echo "[WARN] Skipped pearl-miner download."
+        return 1
+    fi
+
+    echo "[INFO] Downloading pearl-miner..."
+    if download_file "$PEARLHASH_MINER_URL" "$miner"; then
+        chmod +x "$miner" 2>/dev/null || true
+        echo "[OK] pearl-miner downloaded."
+        return 0
+    fi
+
+    echo "[ERROR] Failed to download pearl-miner."
+    return 1
+}
+
+check_pearlhash_miner() {
     local miner="$SCRIPT_DIR/pearl-miner"
 
     if [ ! -f "$miner" ]; then
-        echo "[ERROR] pearl-miner not found."
-        echo "        Download pearl-miner from the official Pearl release page"
-        echo "        and place it next to dashboard.py."
-        return 1
+        download_pearlhash_miner || return 1
     fi
 
     chmod +x "$miner" 2>/dev/null || true
@@ -186,8 +267,9 @@ check_miner_binary() {
 
 syntax_check() {
     local failed=0
+    local files=("${CORE_FILES[@]}" "${PEARLHASH_FILES[@]}")
 
-    for file_name in "${REQUIRED_FILES[@]}"; do
+    for file_name in "${files[@]}"; do
         if [ -f "$SCRIPT_DIR/$file_name" ]; then
             if python3 -m py_compile "$SCRIPT_DIR/$file_name"; then
                 echo "[OK] syntax check: $file_name"
@@ -208,13 +290,15 @@ main() {
 
     check_python || ok=1
     check_tmux || ok=1
-    check_downloader || ok=1
     check_nvidia_smi || true
-    prepare_runtime
 
-    prepare_project_files || ok=1
+    prepare_runtime
+    select_pool_backend
+
+    prepare_core_files || ok=1
+    prepare_pearlhash_files || ok=1
     syntax_check || ok=1
-    check_miner_binary || ok=1
+    check_pearlhash_miner || ok=1
 
     echo "============================================================"
 
