@@ -1,30 +1,22 @@
 #!/usr/bin/env bash
 
-# ==============================================================================
-# PEARLHASH MONITORED MINER - STARTER
-# ==============================================================================
-# This script:
-#   1) runs setup.sh to check/update required files
-#   2) starts dashboard.py if everything is ready
-# ==============================================================================
-
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_SH="$SCRIPT_DIR/setup.sh"
 DASHBOARD_PY="$SCRIPT_DIR/dashboard.py"
 
-print_header() {
-    echo "============================================================"
-    echo " PEARLHASH MONITORED MINER - START"
-    echo "============================================================"
-}
-
-print_header
+echo "============================================================"
+echo " MONMINER - START"
+echo "============================================================"
 
 if [ ! -f "$SETUP_SH" ]; then
-    echo "[ERROR] setup.sh not found in:"
-    echo "        $SCRIPT_DIR"
+    echo "[ERROR] setup.sh not found."
+    exit 1
+fi
+
+if [ ! -f "$DASHBOARD_PY" ]; then
+    echo "[ERROR] dashboard.py not found."
     exit 1
 fi
 
@@ -43,12 +35,7 @@ if [ "$setup_result" -ne 0 ]; then
     exit "$setup_result"
 fi
 
-if [ ! -f "$DASHBOARD_PY" ]; then
-    echo "[ERROR] dashboard.py not found after setup."
-    exit 1
-fi
-
-echo "[INFO] Starting PearlHash dashboard..."
+echo "[INFO] Starting MonMiner dashboard..."
 echo ""
 
 python3 "$DASHBOARD_PY"
