@@ -190,15 +190,29 @@ def parse_hashrate():
         return None
 
     patterns = [
+        r"hashrate_th_s\s*=\s*([\d.]+)",
+        r"hashrate_ths\s*=\s*([\d.]+)",
+        r"hashrate_th/s\s*=\s*([\d.]+)",
         r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
         r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
         r"Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
         r"speed\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
-        r"([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
     ]
 
     values = []
-    for pattern in patterns:
+
+    # AlphaPool direct TH/s fields.
+    for pattern in patterns[:3]:
+        for value in re.findall(pattern, text, re.IGNORECASE):
+            try:
+                v = float(value)
+                if v > 0:
+                    values.append(v)
+            except Exception:
+                pass
+
+    # Generic hashrate fields with units.
+    for pattern in patterns[3:]:
         for value, unit in re.findall(pattern, text, re.IGNORECASE):
             try:
                 v = to_ths(float(value), unit)
