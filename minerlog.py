@@ -17,7 +17,7 @@ def run():
     os.system("clear")
 
     print("=" * 56)
-    print(" MON-MINER LOG")
+    print(" MON-MINER LIVE LOG")
     print("=" * 56)
     print("[INFO] Log pane only. Use the bottom-right console pane for commands.")
     print("")
@@ -56,3 +56,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
