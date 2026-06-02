@@ -348,6 +348,50 @@ def iter_recent_log_lines(max_lines=300):
 
 
 def parse_hashrate():
+    metrics = parse_json_metrics()
+
+    # MinePRL reports dashboard-ready TH/s in these fields.
+    preferred_keys = [
+        "kernel_chain_tera_hashes_per_second",
+        "chain_tera_hashes_per_second",
+        "wall_chain_tera_hashes_per_second",
+        "cumulative_chain_tera_hashes_per_second",
+        "hashrate_ths",
+    ]
+
+    for key in preferred_keys:
+        value = metrics.get(key)
+        if value is None:
+            continue
+
+        try:
+            v = float(value)
+            if v > 0:
+                return round(v, 2)
+        except Exception:
+            pass
+
+    # Fallback: raw hashes/s fields. Convert H/s -> TH/s.
+    raw_hash_keys = [
+        "kernel_chain_hashes_per_second",
+        "chain_hashes_per_second",
+        "wall_chain_hashes_per_second",
+        "cumulative_chain_hashes_per_second",
+    ]
+
+    for key in raw_hash_keys:
+        value = metrics.get(key)
+        if value is None:
+            continue
+
+        try:
+            v = float(value)
+            if v > 0:
+                return round(v / 1_000_000_000_000, 2)
+        except Exception:
+            pass
+
+    # Fallback for normal text logs.
     text = "".join(iter_recent_log_lines())
 
     if not text:
@@ -357,24 +401,16 @@ def parse_hashrate():
         r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
         r"Reported\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s)",
-        r"hashrate[_ ]?(?:ths|th_s|thps)?[\"']?\s*[:=]\s*([\d.]+)",
     ]
 
     values = []
 
-    for pattern in patterns[:3]:
+    for pattern in patterns:
         for value, unit in re.findall(pattern, text, re.IGNORECASE):
             try:
                 values.append(to_ths(float(value), unit))
             except Exception:
                 pass
-
-    # JSON-ish metrics fallback.
-    for match in re.findall(patterns[3], text, re.IGNORECASE):
-        try:
-            values.append(float(match))
-        except Exception:
-            pass
 
     if not values:
         return None
