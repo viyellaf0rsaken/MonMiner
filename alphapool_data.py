@@ -189,37 +189,29 @@ def parse_hashrate():
     if not text:
         return None
 
-    patterns = [
-        r"hashrate_th_s\s*=\s*([\d.]+)",
-        r"hashrate_ths\s*=\s*([\d.]+)",
-        r"hashrate_th/s\s*=\s*([\d.]+)",
-        r"Hashrate\s+Total\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
-        r"Total\s+Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
-        r"Hashrate\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
-        r"speed\s*[:=]\s*([\d.]+)\s*(TH/s|GH/s|MH/s|H/s)",
-    ]
-
     values = []
 
-    # AlphaPool direct TH/s fields.
-    for pattern in patterns[:3]:
-        for value in re.findall(pattern, text, re.IGNORECASE):
-            try:
-                v = float(value)
-                if v > 0:
-                    values.append(v)
-            except Exception:
-                pass
+    # AlphaPool log format:
+    # miner status attempts=... hashrate_th_s=168.88 ...
+    for value in re.findall(r"hashrate_th_s=([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE):
+        try:
+            v = float(value)
+            if v > 0:
+                values.append(v)
+        except Exception:
+            pass
 
-    # Generic hashrate fields with units.
-    for pattern in patterns[3:]:
-        for value, unit in re.findall(pattern, text, re.IGNORECASE):
-            try:
-                v = to_ths(float(value), unit)
-                if v > 0:
-                    values.append(v)
-            except Exception:
-                pass
+    if values:
+        return round(sum(values[-10:]) / len(values[-10:]), 2)
+
+    # Generic fallback.
+    for value, unit in re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*(TH/s|GH/s|MH/s|H/s)", text, re.IGNORECASE):
+        try:
+            v = to_ths(float(value), unit)
+            if v > 0:
+                values.append(v)
+        except Exception:
+            pass
 
     return round(sum(values[-10:]) / len(values[-10:]), 2) if values else None
 
