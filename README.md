@@ -1,5 +1,5 @@
 # MonMiner
-A simple terminal dashboard for Pearl mining pools.
+A simple terminal dashboard for PRL mining pools.
 
 MonMiner currently supports:
 
