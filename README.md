@@ -14,7 +14,7 @@ This is a personal project and is not an official Pearl tool.
 
 Missing dependencies can be installed or checked through `setup.sh`.
 
-* WSL Ubuntu or native Linux
+* WSL Ubuntu
 * Python 3
 * `tmux`
 * NVIDIA GPU + driver
