@@ -64,13 +64,12 @@ POOL_PROFILE = {
             "host": "stratum+tcp://sg1.alphapool.tech:5566",
             "description": "Asia / Singapore",
         },
-    ],
-    "coming_soon_options": [
         {
             "name": "India",
-            "description": "Coming soon",
+            "host": "stratum+tcp://in1.alphapool.tech:5566",
+            "description": "India",
         },
-    ],
+    ]
 }
 
 miner_process = None
